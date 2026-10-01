@@ -14,6 +14,7 @@ import { squareToPosition } from "../utils/board.utils";
 import type {
   Board,
   Piece,
+  PieceType,
   PlayerColor,
 } from "../types/chess.types";
 
@@ -50,6 +51,13 @@ const pieceSymbols: Record<
   },
 };
 
+const promotionPieces: PieceType[] = [
+  "queen",
+  "rook",
+  "bishop",
+  "knight",
+];
+
 export default function ChessBoard() {
   const [board, setBoard] =
     useState<Board>(initialBoard);
@@ -69,11 +77,79 @@ export default function ChessBoard() {
   const [winner, setWinner] =
     useState<PlayerColor | null>(null);
 
+  const [promotion, setPromotion] =
+    useState<{
+      row: number;
+      column: number;
+      color: PlayerColor;
+    } | null>(null);
+
+  const resetGame = () => {
+    setBoard(initialBoard);
+    setSelectedSquare(null);
+    setPossibleMoves([]);
+    setCurrentTurn("white");
+    setGameOver(false);
+    setWinner(null);
+    setPromotion(null);
+  };
+
+  const finishTurn = (
+    nextBoard: Board,
+    movingColor: PlayerColor,
+  ) => {
+    const nextTurn =
+      movingColor === "white"
+        ? "black"
+        : "white";
+
+    if (
+      isCheckmate(
+        nextBoard,
+        nextTurn,
+      )
+    ) {
+      setGameOver(true);
+      setWinner(movingColor);
+    }
+
+    setBoard(nextBoard);
+    setCurrentTurn(nextTurn);
+    setSelectedSquare(null);
+    setPossibleMoves([]);
+  };
+
+  const handlePromotion = (
+    pieceType: PieceType,
+  ) => {
+    if (!promotion) {
+      return;
+    }
+
+    const newBoard = board.map(
+      (row) => [...row],
+    );
+
+    newBoard[promotion.row][
+      promotion.column
+    ] = {
+      type: pieceType,
+      color: promotion.color,
+    };
+
+    setPromotion(null);
+
+    finishTurn(
+      newBoard,
+      promotion.color,
+    );
+  };
+
   const handleSquareClick = (
     square: string,
     piece: Piece | null,
   ) => {
-    if (gameOver) {
+    if (gameOver || promotion) {
       return;
     }
 
@@ -87,31 +163,43 @@ export default function ChessBoard() {
       const to =
         squareToPosition(square);
 
+      const movingPiece =
+        board[from.row][from.column];
+
+      if (!movingPiece) {
+        return;
+      }
+
       const newBoard = movePiece(
         board,
         from,
         to,
       );
 
-      const nextTurn =
-        currentTurn === "white"
-          ? "black"
-          : "white";
+      const isPromotion =
+        movingPiece.type === "pawn" &&
+        (to.row === 0 ||
+          to.row === 7);
 
-      if (
-        isCheckmate(
-          newBoard,
-          nextTurn,
-        )
-      ) {
-        setGameOver(true);
-        setWinner(currentTurn);
+      if (isPromotion) {
+        setBoard(newBoard);
+
+        setSelectedSquare(null);
+        setPossibleMoves([]);
+
+        setPromotion({
+          row: to.row,
+          column: to.column,
+          color: movingPiece.color,
+        });
+
+        return;
       }
 
-      setBoard(newBoard);
-      setCurrentTurn(nextTurn);
-      setSelectedSquare(null);
-      setPossibleMoves([]);
+      finishTurn(
+        newBoard,
+        movingPiece.color,
+      );
 
       return;
     }
@@ -119,7 +207,6 @@ export default function ChessBoard() {
     if (!piece) {
       setSelectedSquare(null);
       setPossibleMoves([]);
-
       return;
     }
 
@@ -153,29 +240,39 @@ export default function ChessBoard() {
     );
 
   return (
-    <div className="w-full">
-      <div className="mb-4 text-center text-lg font-semibold text-white">
-        {gameOver ? (
-          <span>
-            کیش و مات! برنده:
-            {winner === "white"
-              ? " سفید"
-              : " سیاه"}
-          </span>
-        ) : (
-          <span>
-            نوبت:
-            {currentTurn === "white"
-              ? " سفید"
-              : " سیاه"}
+    <div className="relative w-full">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="text-lg font-semibold text-white">
+          {gameOver ? (
+            <span>
+              کیش و مات! برنده:
+              {winner === "white"
+                ? " سفید"
+                : " سیاه"}
+            </span>
+          ) : (
+            <span>
+              نوبت:
+              {currentTurn === "white"
+                ? " سفید"
+                : " سیاه"}
 
-            {isCurrentPlayerInCheck && (
-              <span className="mr-2 text-red-400">
-                — کیش!
-              </span>
-            )}
-          </span>
-        )}
+              {isCurrentPlayerInCheck && (
+                <span className="mr-2 text-red-400">
+                  — کیش!
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={resetGame}
+          className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-200"
+        >
+          شروع مجدد
+        </button>
       </div>
 
       <div className="grid grid-cols-8 overflow-hidden rounded-lg border-4 border-zinc-800">
@@ -237,6 +334,45 @@ export default function ChessBoard() {
           }),
         )}
       </div>
+
+      {promotion && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-lg bg-black/70">
+          <div className="rounded-xl bg-zinc-900 p-6 shadow-2xl">
+            <h2 className="mb-5 text-center text-lg font-bold text-white">
+              انتخاب مهره
+            </h2>
+
+            <div className="grid grid-cols-4 gap-3">
+              {promotionPieces.map(
+                (pieceType) => (
+                  <button
+                    key={pieceType}
+                    type="button"
+                    onClick={() =>
+                      handlePromotion(
+                        pieceType,
+                      )
+                    }
+                    className="flex h-20 w-20 flex-col items-center justify-center rounded-lg bg-white transition hover:bg-zinc-200"
+                  >
+                    <span className="text-4xl text-zinc-900">
+                      {
+                        pieceSymbols[
+                          promotion.color
+                        ][pieceType]
+                      }
+                    </span>
+
+                    <span className="mt-1 text-xs text-zinc-600">
+                      {pieceType}
+                    </span>
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
