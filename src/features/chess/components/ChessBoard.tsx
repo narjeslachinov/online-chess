@@ -3,13 +3,16 @@
 import { useState } from "react";
 
 import { initialBoard } from "../data/initial-board";
+
 import {
   getValidMoves,
   isCheckmate,
   isInCheck,
   isStalemate,
   moveWithCastling,
+  moveWithEnPassant,
 } from "../utils/move.utils";
+
 import { squareToPosition } from "../utils/board.utils";
 
 import type {
@@ -18,6 +21,7 @@ import type {
   Piece,
   PieceType,
   PlayerColor,
+  Position,
 } from "../types/chess.types";
 
 const files = [
@@ -43,6 +47,7 @@ const pieceSymbols: Record<
     knight: "♘",
     pawn: "♙",
   },
+
   black: {
     king: "♚",
     queen: "♛",
@@ -64,7 +69,8 @@ export default function ChessBoard() {
   const [board, setBoard] =
     useState<Board>(initialBoard);
 
-    const [draw, setDraw] = useState(false);
+  const [draw, setDraw] =
+    useState(false);
 
   const [selectedSquare, setSelectedSquare] =
     useState<string | null>(null);
@@ -96,8 +102,36 @@ export default function ChessBoard() {
       blackQueen: true,
     });
 
-    const [enPassantTarget, setEnPassantTarget] =
-  useState<string | null>(null);
+  /*
+   * این مقدار مثلاً می‌تواند باشد:
+   *
+   * "e6"
+   *
+   * یعنی اگر Pawn سیاه از e7 به e5 آمده،
+   * سفید می‌تواند در حرکت بعدی به e6
+   * En Passant انجام دهد.
+   */
+  const [enPassantTarget, setEnPassantTarget] =
+    useState<string | null>(null);
+
+  /*
+   * تبدیل "e6" به:
+   *
+   * {
+   *   row: 2,
+   *   column: 4
+   * }
+   */
+  const getEnPassantPosition =
+    (): Position | null => {
+      if (!enPassantTarget) {
+        return null;
+      }
+
+      return squareToPosition(
+        enPassantTarget,
+      );
+    };
 
   const resetGame = () => {
     setBoard(initialBoard);
@@ -108,6 +142,7 @@ export default function ChessBoard() {
     setWinner(null);
     setPromotion(null);
     setDraw(false);
+    setEnPassantTarget(null);
 
     setCastlingRights({
       whiteKing: true,
@@ -117,42 +152,58 @@ export default function ChessBoard() {
     });
   };
 
-const finishTurn = (
-  nextBoard: Board,
-  movingColor: PlayerColor,
-  nextCastlingRights: CastlingRights,
-) => {
-  const nextTurn =
-    movingColor === "white"
-      ? "black"
-      : "white";
+  const finishTurn = (
+    nextBoard: Board,
+    movingColor: PlayerColor,
+    nextCastlingRights: CastlingRights,
+    nextEnPassantTarget: string | null,
+  ) => {
+    const nextTurn =
+      movingColor === "white"
+        ? "black"
+        : "white";
 
-  if (
-    isCheckmate(
-      nextBoard,
-      nextTurn,
-      nextCastlingRights,
-    )
-  ) {
-    setGameOver(true);
-    setWinner(movingColor);
-  } else if (
-    isStalemate(
-      nextBoard,
-      nextTurn,
-      nextCastlingRights,
-    )
-  ) {
-    setGameOver(true);
-    setDraw(true);
-  }
+    const enPassantPosition =
+      nextEnPassantTarget
+        ? squareToPosition(
+            nextEnPassantTarget,
+          )
+        : null;
 
-  setBoard(nextBoard);
-  setCurrentTurn(nextTurn);
-  setSelectedSquare(null);
-  setPossibleMoves([]);
-  setCastlingRights(nextCastlingRights);
-};
+    if (
+      isCheckmate(
+        nextBoard,
+        nextTurn,
+        nextCastlingRights,
+        enPassantPosition,
+      )
+    ) {
+      setGameOver(true);
+      setWinner(movingColor);
+    } else if (
+      isStalemate(
+        nextBoard,
+        nextTurn,
+        nextCastlingRights,
+        enPassantPosition,
+      )
+    ) {
+      setGameOver(true);
+      setDraw(true);
+    }
+
+    setBoard(nextBoard);
+    setCurrentTurn(nextTurn);
+    setSelectedSquare(null);
+    setPossibleMoves([]);
+    setCastlingRights(
+      nextCastlingRights,
+    );
+    setEnPassantTarget(
+      nextEnPassantTarget,
+    );
+  };
+
   const handlePromotion = (
     pieceType: PieceType,
   ) => {
@@ -177,6 +228,7 @@ const finishTurn = (
       newBoard,
       promotion.color,
       castlingRights,
+      null,
     );
   };
 
@@ -188,6 +240,11 @@ const finishTurn = (
       return;
     }
 
+    /*
+     * --------------------------------
+     * حرکت مهره انتخاب‌شده
+     * --------------------------------
+     */
     if (
       selectedSquare &&
       possibleMoves.includes(square)
@@ -205,30 +262,85 @@ const finishTurn = (
         return;
       }
 
-      const newBoard =
-        moveWithCastling(
-          board,
-          from,
-          to,
-        );
-         if (
-        movingPiece.type === "pawn" &&
-        Math.abs(to.row - from.row) === 2
-        ) {
-        const middleRow =
-            (from.row + to.row) / 2;
+      /*
+       * بررسی می‌کنیم حرکت فعلی
+       * En Passant است یا نه.
+       */
+      const currentEnPassantPosition =
+        getEnPassantPosition();
 
-        setEnPassantTarget(
-            `${files[from.column]}${8 - middleRow}`,
-        );
-        } else {
-        setEnPassantTarget(null);
-        }
+      const isEnPassant =
+        movingPiece.type === "pawn" &&
+        currentEnPassantPosition !== null &&
+        to.row ===
+          currentEnPassantPosition.row &&
+        to.column ===
+          currentEnPassantPosition.column &&
+        from.column !== to.column &&
+        board[to.row][to.column] === null;
+
+      /*
+       * اگر En Passant باشد،
+       * Pawn حریف باید از صفحه حذف شود.
+       */
+      let newBoard: Board;
+
+      if (isEnPassant) {
+        newBoard =
+          moveWithEnPassant(
+            board,
+            from,
+            to,
+          );
+      } else {
+        /*
+         * در غیر این صورت حرکت عادی
+         * یا Castling.
+         */
+        newBoard =
+          moveWithCastling(
+            board,
+            from,
+            to,
+          );
+      }
+
+      /*
+       * --------------------------------
+       * تعیین En Passant برای حرکت بعدی
+       * --------------------------------
+       *
+       * فقط زمانی Target ساخته می‌شود
+       * که Pawn دقیقاً دو خانه حرکت کرده باشد.
+       */
+      let nextEnPassantTarget:
+        | string
+        | null = null;
+
+      if (
+        movingPiece.type === "pawn" &&
+        Math.abs(
+          to.row - from.row,
+        ) === 2
+      ) {
+        const middleRow =
+          (from.row + to.row) / 2;
+
+        nextEnPassantTarget =
+          `${files[from.column]}${
+            8 - middleRow
+          }`;
+      }
 
       const nextCastlingRights = {
         ...castlingRights,
       };
 
+      /*
+       * --------------------------------
+       * Castling Rights - King
+       * --------------------------------
+       */
       if (
         movingPiece.type === "king"
       ) {
@@ -249,6 +361,11 @@ const finishTurn = (
         }
       }
 
+      /*
+       * --------------------------------
+       * Castling Rights - Rook
+       * --------------------------------
+       */
       if (
         movingPiece.type === "rook"
       ) {
@@ -289,6 +406,11 @@ const finishTurn = (
         }
       }
 
+      /*
+       * --------------------------------
+       * Promotion
+       * --------------------------------
+       */
       const isPromotion =
         movingPiece.type === "pawn" &&
         (to.row === 0 ||
@@ -304,6 +426,8 @@ const finishTurn = (
           nextCastlingRights,
         );
 
+        setEnPassantTarget(null);
+
         setPromotion({
           row: to.row,
           column: to.column,
@@ -313,35 +437,59 @@ const finishTurn = (
         return;
       }
 
+      /*
+       * پایان حرکت
+       */
       finishTurn(
         newBoard,
         movingPiece.color,
         nextCastlingRights,
+        nextEnPassantTarget,
       );
 
       return;
     }
 
+    /*
+     * اگر خانه خالی بود
+     */
     if (!piece) {
       setSelectedSquare(null);
       setPossibleMoves([]);
       return;
     }
 
+    /*
+     * اگر مهره متعلق به نوبت فعلی نبود
+     */
     if (piece.color !== currentTurn) {
       return;
     }
 
+    /*
+     * انتخاب مهره
+     */
     setSelectedSquare(square);
 
     const position =
       squareToPosition(square);
 
+    /*
+     * Target فعلی En Passant
+     * را به Position تبدیل می‌کنیم.
+     */
+    const currentEnPassantPosition =
+      getEnPassantPosition();
+
+    /*
+     * گرفتن حرکت‌های قانونی
+     */
     const moves = getValidMoves(
       board,
       position,
       piece,
       castlingRights,
+      currentEnPassantPosition,
     );
 
     const moveSquares = moves.map(
@@ -362,17 +510,17 @@ const finishTurn = (
     <div className="relative w-full">
       <div className="mb-4 flex items-center justify-between">
         <div className="text-lg font-semibold text-white">
-            {gameOver ? (
+          {gameOver ? (
             <span>
-                {draw
+              {draw
                 ? "بازی مساوی شد — پات!"
                 : `کیش و مات! برنده: ${
                     winner === "white"
-                        ? "سفید"
-                        : "سیاه"
-                    }`}
+                      ? "سفید"
+                      : "سیاه"
+                  }`}
             </span>
-            ) : (
+          ) : (
             <span>
               نوبت:
               {currentTurn === "white"
@@ -399,61 +547,74 @@ const finishTurn = (
 
       <div className="grid grid-cols-8 overflow-hidden rounded-lg border-4 border-zinc-800">
         {board.map((row, rowIndex) =>
-          row.map((piece, columnIndex) => {
-            const isDark =
-              (rowIndex + columnIndex) % 2 ===
-              1;
+          row.map(
+            (
+              piece,
+              columnIndex,
+            ) => {
+              const isDark =
+                (rowIndex +
+                  columnIndex) %
+                  2 ===
+                1;
 
-            const square =
-              `${files[columnIndex]}${8 - rowIndex}`;
+              const square =
+                `${files[columnIndex]}${
+                  8 - rowIndex
+                }`;
 
-            const isSelected =
-              selectedSquare === square;
+              const isSelected =
+                selectedSquare ===
+                square;
 
-            const isPossibleMove =
-              possibleMoves.includes(square);
+              const isPossibleMove =
+                possibleMoves.includes(
+                  square,
+                );
 
-            return (
-              <div
-                key={`${rowIndex}-${columnIndex}`}
-                onClick={() =>
-                  handleSquareClick(
-                    square,
-                    piece,
-                  )
-                }
-                className={`relative flex aspect-square cursor-pointer items-center justify-center ${
-                  isDark
-                    ? "bg-emerald-700"
-                    : "bg-amber-100"
-                } ${
-                  isSelected
-                    ? "ring-4 ring-yellow-400 ring-inset"
-                    : ""
-                } ${
-                  isPossibleMove
-                    ? "after:absolute after:h-4 after:w-4 after:rounded-full after:bg-yellow-400"
-                    : ""
-                }`}
-              >
-                {piece && (
-                  <span
-                    className={`select-none text-5xl leading-none ${
-                      piece.color === "white"
-                        ? "text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]"
-                        : "text-zinc-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]"
-                    }`}
-                  >
-                    {
-                      pieceSymbols[
-                        piece.color
-                      ][piece.type]
-                    }
-                  </span>
-                )}
-              </div>
-            );
-          }),
+              return (
+                <div
+                  key={`${rowIndex}-${columnIndex}`}
+                  onClick={() =>
+                    handleSquareClick(
+                      square,
+                      piece,
+                    )
+                  }
+                  className={`relative flex aspect-square cursor-pointer items-center justify-center ${
+                    isDark
+                      ? "bg-emerald-700"
+                      : "bg-amber-100"
+                  } ${
+                    isSelected
+                      ? "ring-4 ring-yellow-400 ring-inset"
+                      : ""
+                  } ${
+                    isPossibleMove
+                      ? "after:absolute after:h-4 after:w-4 after:rounded-full after:bg-yellow-400"
+                      : ""
+                  }`}
+                >
+                  {piece && (
+                    <span
+                      className={`select-none text-5xl leading-none ${
+                        piece.color ===
+                        "white"
+                          ? "text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]"
+                          : "text-zinc-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]"
+                      }`}
+                    >
+                      {
+                        pieceSymbols[
+                          piece.color
+                        ][piece.type]
+                      }
+                    </span>
+                  )}
+                </div>
+              );
+            },
+          ),
         )}
       </div>
 
