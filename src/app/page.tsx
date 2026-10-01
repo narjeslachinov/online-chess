@@ -1,4 +1,5 @@
 import ChessBoard from "@/features/chess/components/ChessBoard";
+import SocketTest from "@/features/chess/components/SocketTest";
 
 export default function Home() {
   return (
@@ -7,7 +8,7 @@ export default function Home() {
         <h1 className="mb-6 text-center text-3xl font-bold text-white">
           Online Chess
         </h1>
-
+        <SocketTest />
         <ChessBoard />
       </div>
     </main>
