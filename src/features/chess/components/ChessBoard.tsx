@@ -5,6 +5,8 @@ import { useState } from "react";
 import { initialBoard } from "../data/initial-board";
 import {
   getValidMoves,
+  isCheckmate,
+  isInCheck,
   movePiece,
 } from "../utils/move.utils";
 import { squareToPosition } from "../utils/board.utils";
@@ -61,10 +63,20 @@ export default function ChessBoard() {
   const [currentTurn, setCurrentTurn] =
     useState<PlayerColor>("white");
 
+  const [gameOver, setGameOver] =
+    useState(false);
+
+  const [winner, setWinner] =
+    useState<PlayerColor | null>(null);
+
   const handleSquareClick = (
     square: string,
     piece: Piece | null,
   ) => {
+    if (gameOver) {
+      return;
+    }
+
     if (
       selectedSquare &&
       possibleMoves.includes(square)
@@ -81,15 +93,25 @@ export default function ChessBoard() {
         to,
       );
 
+      const nextTurn =
+        currentTurn === "white"
+          ? "black"
+          : "white";
+
+      if (
+        isCheckmate(
+          newBoard,
+          nextTurn,
+        )
+      ) {
+        setGameOver(true);
+        setWinner(currentTurn);
+      }
+
       setBoard(newBoard);
+      setCurrentTurn(nextTurn);
       setSelectedSquare(null);
       setPossibleMoves([]);
-
-      setCurrentTurn((turn) =>
-        turn === "white"
-          ? "black"
-          : "white",
-      );
 
       return;
     }
@@ -97,6 +119,7 @@ export default function ChessBoard() {
     if (!piece) {
       setSelectedSquare(null);
       setPossibleMoves([]);
+
       return;
     }
 
@@ -107,29 +130,52 @@ export default function ChessBoard() {
     setSelectedSquare(square);
 
     const position =
-    squareToPosition(square);
+      squareToPosition(square);
 
     const moves = getValidMoves(
-    board,
-    position,
-    piece,
+      board,
+      position,
+      piece,
     );
 
     const moveSquares = moves.map(
-    ({ row, column }) =>
+      ({ row, column }) =>
         `${files[column]}${8 - row}`,
     );
 
     setPossibleMoves(moveSquares);
   };
 
+  const isCurrentPlayerInCheck =
+    isInCheck(
+      board,
+      currentTurn,
+    );
+
   return (
     <div className="w-full">
       <div className="mb-4 text-center text-lg font-semibold text-white">
-        نوبت:
-        {currentTurn === "white"
-          ? " سفید"
-          : " سیاه"}
+        {gameOver ? (
+          <span>
+            کیش و مات! برنده:
+            {winner === "white"
+              ? " سفید"
+              : " سیاه"}
+          </span>
+        ) : (
+          <span>
+            نوبت:
+            {currentTurn === "white"
+              ? " سفید"
+              : " سیاه"}
+
+            {isCurrentPlayerInCheck && (
+              <span className="mr-2 text-red-400">
+                — کیش!
+              </span>
+            )}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-8 overflow-hidden rounded-lg border-4 border-zinc-800">

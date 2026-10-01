@@ -442,3 +442,39 @@ export function getValidMoves(
     );
   });
 }
+export function hasAnyValidMove(
+  board: Board,
+  color: Piece["color"],
+): boolean {
+  for (let row = 0; row < 8; row++) {
+    for (let column = 0; column < 8; column++) {
+      const piece = board[row][column];
+
+      if (!piece || piece.color !== color) {
+        continue;
+      }
+
+      const moves = getValidMoves(
+        board,
+        { row, column },
+        piece,
+      );
+
+      if (moves.length > 0) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function isCheckmate(
+  board: Board,
+  color: Piece["color"],
+): boolean {
+  return (
+    isInCheck(board, color) &&
+    !hasAnyValidMove(board, color)
+  );
+}
