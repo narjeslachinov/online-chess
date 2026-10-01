@@ -723,3 +723,17 @@ export function isCheckmate(
     )
   );
 }
+export function isStalemate(
+  board: Board,
+  color: Piece["color"],
+  castlingRights?: CastlingRights,
+): boolean {
+  return (
+    !isInCheck(board, color) &&
+    !hasAnyValidMove(
+      board,
+      color,
+      castlingRights,
+    )
+  );
+}

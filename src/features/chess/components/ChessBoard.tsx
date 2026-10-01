@@ -7,6 +7,7 @@ import {
   getValidMoves,
   isCheckmate,
   isInCheck,
+  isStalemate,
   moveWithCastling,
 } from "../utils/move.utils";
 import { squareToPosition } from "../utils/board.utils";
@@ -63,6 +64,8 @@ export default function ChessBoard() {
   const [board, setBoard] =
     useState<Board>(initialBoard);
 
+    const [draw, setDraw] = useState(false);
+
   const [selectedSquare, setSelectedSquare] =
     useState<string | null>(null);
 
@@ -101,6 +104,7 @@ export default function ChessBoard() {
     setGameOver(false);
     setWinner(null);
     setPromotion(null);
+    setDraw(false);
 
     setCastlingRights({
       whiteKing: true,
@@ -110,34 +114,42 @@ export default function ChessBoard() {
     });
   };
 
-  const finishTurn = (
-    nextBoard: Board,
-    movingColor: PlayerColor,
-    nextCastlingRights: CastlingRights,
-  ) => {
-    const nextTurn =
-      movingColor === "white"
-        ? "black"
-        : "white";
+const finishTurn = (
+  nextBoard: Board,
+  movingColor: PlayerColor,
+  nextCastlingRights: CastlingRights,
+) => {
+  const nextTurn =
+    movingColor === "white"
+      ? "black"
+      : "white";
 
-    if (
-      isCheckmate(
-        nextBoard,
-        nextTurn,
-        nextCastlingRights,
-      )
-    ) {
-      setGameOver(true);
-      setWinner(movingColor);
-    }
+  if (
+    isCheckmate(
+      nextBoard,
+      nextTurn,
+      nextCastlingRights,
+    )
+  ) {
+    setGameOver(true);
+    setWinner(movingColor);
+  } else if (
+    isStalemate(
+      nextBoard,
+      nextTurn,
+      nextCastlingRights,
+    )
+  ) {
+    setGameOver(true);
+    setDraw(true);
+  }
 
-    setBoard(nextBoard);
-    setCurrentTurn(nextTurn);
-    setSelectedSquare(null);
-    setPossibleMoves([]);
-    setCastlingRights(nextCastlingRights);
-  };
-
+  setBoard(nextBoard);
+  setCurrentTurn(nextTurn);
+  setSelectedSquare(null);
+  setPossibleMoves([]);
+  setCastlingRights(nextCastlingRights);
+};
   const handlePromotion = (
     pieceType: PieceType,
   ) => {
@@ -334,14 +346,17 @@ export default function ChessBoard() {
     <div className="relative w-full">
       <div className="mb-4 flex items-center justify-between">
         <div className="text-lg font-semibold text-white">
-          {gameOver ? (
+            {gameOver ? (
             <span>
-              کیش و مات! برنده:
-              {winner === "white"
-                ? " سفید"
-                : " سیاه"}
+                {draw
+                ? "بازی مساوی شد — پات!"
+                : `کیش و مات! برنده: ${
+                    winner === "white"
+                        ? "سفید"
+                        : "سیاه"
+                    }`}
             </span>
-          ) : (
+            ) : (
             <span>
               نوبت:
               {currentTurn === "white"
