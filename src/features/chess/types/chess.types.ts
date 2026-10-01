@@ -21,3 +21,5 @@ export type Position = {
   row: number;
   column: number;
 };
+
+export type PlayerColor = "white" | "black";

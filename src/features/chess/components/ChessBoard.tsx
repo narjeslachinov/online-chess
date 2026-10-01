@@ -3,11 +3,28 @@
 import { useState } from "react";
 
 import { initialBoard } from "../data/initial-board";
+import {
+  getPawnMoves,
+  movePiece,
+} from "../utils/move.utils";
 import { squareToPosition } from "../utils/board.utils";
-import { getPawnMoves } from "../utils/move.utils";
-import type { Piece } from "../types/chess.types";
 
-const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+import type {
+  Board,
+  Piece,
+  PlayerColor,
+} from "../types/chess.types";
+
+const files = [
+  "a",
+  "b",
+  "c",
+  "d",
+  "e",
+  "f",
+  "g",
+  "h",
+];
 
 const pieceSymbols: Record<
   Piece["color"],
@@ -32,83 +49,152 @@ const pieceSymbols: Record<
 };
 
 export default function ChessBoard() {
+  const [board, setBoard] =
+    useState<Board>(initialBoard);
+
   const [selectedSquare, setSelectedSquare] =
     useState<string | null>(null);
 
   const [possibleMoves, setPossibleMoves] =
     useState<string[]>([]);
 
+  const [currentTurn, setCurrentTurn] =
+    useState<PlayerColor>("white");
+
+  const handleSquareClick = (
+    square: string,
+    piece: Piece | null,
+  ) => {
+    if (
+      selectedSquare &&
+      possibleMoves.includes(square)
+    ) {
+      const from =
+        squareToPosition(selectedSquare);
+
+      const to =
+        squareToPosition(square);
+
+      const newBoard = movePiece(
+        board,
+        from,
+        to,
+      );
+
+      setBoard(newBoard);
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+
+      setCurrentTurn((turn) =>
+        turn === "white"
+          ? "black"
+          : "white",
+      );
+
+      return;
+    }
+
+    if (!piece) {
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+      return;
+    }
+
+    if (piece.color !== currentTurn) {
+      return;
+    }
+
+    setSelectedSquare(square);
+
+    if (piece.type === "pawn") {
+      const position =
+        squareToPosition(square);
+
+      const moves = getPawnMoves(
+        board,
+        position,
+        piece,
+      );
+
+      const moveSquares = moves.map(
+        ({ row, column }) =>
+          `${files[column]}${8 - row}`,
+      );
+
+      setPossibleMoves(moveSquares);
+    } else {
+      setPossibleMoves([]);
+    }
+  };
+
   return (
-    <div className="grid grid-cols-8 overflow-hidden rounded-lg border-4 border-zinc-800">
-      {initialBoard.map((row, rowIndex) =>
-        row.map((piece, columnIndex) => {
-          const isDark =
-            (rowIndex + columnIndex) % 2 === 1;
+    <div className="w-full">
+      <div className="mb-4 text-center text-lg font-semibold text-white">
+        نوبت:
+        {currentTurn === "white"
+          ? " سفید"
+          : " سیاه"}
+      </div>
 
-          const square =
-            `${files[columnIndex]}${8 - rowIndex}`;
+      <div className="grid grid-cols-8 overflow-hidden rounded-lg border-4 border-zinc-800">
+        {board.map((row, rowIndex) =>
+          row.map((piece, columnIndex) => {
+            const isDark =
+              (rowIndex + columnIndex) % 2 ===
+              1;
 
-          const isSelected =
-            selectedSquare === square;
+            const square =
+              `${files[columnIndex]}${8 - rowIndex}`;
 
-          const isPossibleMove =
-            possibleMoves.includes(square);
+            const isSelected =
+              selectedSquare === square;
 
-          return (
-            <div
-              key={`${rowIndex}-${columnIndex}`}
-              onClick={() => {
-                if (!piece) return;
+            const isPossibleMove =
+              possibleMoves.includes(square);
 
-                setSelectedSquare(square);
-
-                if (piece.type === "pawn") {
-                  const position =
-                    squareToPosition(square);
-
-                  const moves = getPawnMoves(
-                    initialBoard,
-                    position,
+            return (
+              <div
+                key={`${rowIndex}-${columnIndex}`}
+                onClick={() =>
+                  handleSquareClick(
+                    square,
                     piece,
-                  );
-
-                  const moveSquares = moves.map(
-                    ({ row, column }) =>
-                      `${files[column]}${8 - row}`,
-                  );
-
-                  setPossibleMoves(moveSquares);
+                  )
                 }
-              }}
-              className={`relative flex aspect-square cursor-pointer items-center justify-center ${
-                isDark
-                  ? "bg-emerald-700"
-                  : "bg-amber-100"
-              } ${
-                isSelected
-                  ? "ring-4 ring-yellow-400 ring-inset"
-                  : ""
-              } ${
-                isPossibleMove
-                  ? "after:absolute after:h-4 after:w-4 after:rounded-full after:bg-yellow-400"
-                  : ""
-              }`}
-            >
-              {piece && (
-                <span
-                  className={`select-none text-5xl leading-none ${
-                    piece.color === "white"
-                      ? "text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]"
-                      : "text-zinc-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]"
-                  }`}
-                >
-                  {pieceSymbols[piece.color][piece.type]}
-                </span>
-              )}
-            </div>
-          );
-        }),
-      )}
+                className={`relative flex aspect-square cursor-pointer items-center justify-center ${
+                  isDark
+                    ? "bg-emerald-700"
+                    : "bg-amber-100"
+                } ${
+                  isSelected
+                    ? "ring-4 ring-yellow-400 ring-inset"
+                    : ""
+                } ${
+                  isPossibleMove
+                    ? "after:absolute after:h-4 after:w-4 after:rounded-full after:bg-yellow-400"
+                    : ""
+                }`}
+              >
+                {piece && (
+                  <span
+                    className={`select-none text-5xl leading-none ${
+                      piece.color === "white"
+                        ? "text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]"
+                        : "text-zinc-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]"
+                    }`}
+                  >
+                    {
+                      pieceSymbols[
+                        piece.color
+                      ][piece.type]
+                    }
+                  </span>
+                )}
+              </div>
+            );
+          }),
+        )}
+      </div>
     </div>
   );
 }
