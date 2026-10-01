@@ -95,12 +95,10 @@ function getPawnMoves(
   const captureRow =
     position.row + direction;
 
-  const captureColumns = [
+  for (const column of [
     position.column - 1,
     position.column + 1,
-  ];
-
-  for (const column of captureColumns) {
+  ]) {
     if (
       !isInsideBoard(
         captureRow,
@@ -210,9 +208,7 @@ function getKnightMoves(
     const column =
       position.column + offset.column;
 
-    if (
-      !isInsideBoard(row, column)
-    ) {
+    if (!isInsideBoard(row, column)) {
       continue;
     }
 
@@ -254,9 +250,7 @@ function getKingMoves(
     const column =
       position.column + direction.column;
 
-    if (
-      !isInsideBoard(row, column)
-    ) {
+    if (!isInsideBoard(row, column)) {
       continue;
     }
 
@@ -273,7 +267,7 @@ function getKingMoves(
   return moves;
 }
 
-export function getValidMoves(
+function getPseudoLegalMoves(
   board: Board,
   position: Position,
   piece: Piece,
@@ -342,4 +336,109 @@ export function movePiece(
     null;
 
   return newBoard;
+}
+
+function findKing(
+  board: Board,
+  color: Piece["color"],
+): Position | null {
+  for (let row = 0; row < 8; row++) {
+    for (let column = 0; column < 8; column++) {
+      const piece = board[row][column];
+
+      if (
+        piece?.type === "king" &&
+        piece.color === color
+      ) {
+        return { row, column };
+      }
+    }
+  }
+
+  return null;
+}
+
+export function isSquareAttacked(
+  board: Board,
+  position: Position,
+  byColor: Piece["color"],
+): boolean {
+  for (let row = 0; row < 8; row++) {
+    for (let column = 0; column < 8; column++) {
+      const piece = board[row][column];
+
+      if (!piece || piece.color !== byColor) {
+        continue;
+      }
+
+      const moves = getPseudoLegalMoves(
+        board,
+        { row, column },
+        piece,
+      );
+
+      if (
+        moves.some(
+          (move) =>
+            move.row === position.row &&
+            move.column === position.column,
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function isInCheck(
+  board: Board,
+  color: Piece["color"],
+): boolean {
+  const kingPosition = findKing(
+    board,
+    color,
+  );
+
+  if (!kingPosition) {
+    return false;
+  }
+
+  const opponent =
+    color === "white"
+      ? "black"
+      : "white";
+
+  return isSquareAttacked(
+    board,
+    kingPosition,
+    opponent,
+  );
+}
+
+export function getValidMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+): Position[] {
+  const pseudoMoves =
+    getPseudoLegalMoves(
+      board,
+      position,
+      piece,
+    );
+
+  return pseudoMoves.filter((move) => {
+    const nextBoard = movePiece(
+      board,
+      position,
+      move,
+    );
+
+    return !isInCheck(
+      nextBoard,
+      piece.color,
+    );
+  });
 }
