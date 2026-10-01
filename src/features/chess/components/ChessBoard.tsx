@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { initialBoard } from "../data/initial-board";
 import {
-  getPawnMoves,
+  getValidMoves,
   movePiece,
 } from "../utils/move.utils";
 import { squareToPosition } from "../utils/board.utils";
@@ -106,25 +106,21 @@ export default function ChessBoard() {
 
     setSelectedSquare(square);
 
-    if (piece.type === "pawn") {
-      const position =
-        squareToPosition(square);
+    const position =
+    squareToPosition(square);
 
-      const moves = getPawnMoves(
-        board,
-        position,
-        piece,
-      );
+    const moves = getValidMoves(
+    board,
+    position,
+    piece,
+    );
 
-      const moveSquares = moves.map(
-        ({ row, column }) =>
-          `${files[column]}${8 - row}`,
-      );
+    const moveSquares = moves.map(
+    ({ row, column }) =>
+        `${files[column]}${8 - row}`,
+    );
 
-      setPossibleMoves(moveSquares);
-    } else {
-      setPossibleMoves([]);
-    }
+    setPossibleMoves(moveSquares);
   };
 
   return (

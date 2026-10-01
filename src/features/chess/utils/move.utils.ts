@@ -4,7 +4,53 @@ import type {
   Position,
 } from "../types/chess.types";
 
-export function getPawnMoves(
+function isInsideBoard(
+  row: number,
+  column: number,
+): boolean {
+  return (
+    row >= 0 &&
+    row < 8 &&
+    column >= 0 &&
+    column < 8
+  );
+}
+
+function getSlidingMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+  directions: Position[],
+): Position[] {
+  const moves: Position[] = [];
+
+  for (const direction of directions) {
+    let row = position.row + direction.row;
+    let column =
+      position.column + direction.column;
+
+    while (isInsideBoard(row, column)) {
+      const target = board[row][column];
+
+      if (!target) {
+        moves.push({ row, column });
+      } else {
+        if (target.color !== piece.color) {
+          moves.push({ row, column });
+        }
+
+        break;
+      }
+
+      row += direction.row;
+      column += direction.column;
+    }
+  }
+
+  return moves;
+}
+
+function getPawnMoves(
   board: Board,
   position: Position,
   piece: Piece,
@@ -21,8 +67,10 @@ export function getPawnMoves(
     position.row + direction;
 
   if (
-    oneStepRow >= 0 &&
-    oneStepRow < 8 &&
+    isInsideBoard(
+      oneStepRow,
+      position.column,
+    ) &&
     board[oneStepRow][position.column] === null
   ) {
     moves.push({
@@ -47,39 +95,235 @@ export function getPawnMoves(
   const captureRow =
     position.row + direction;
 
-  if (
-    captureRow >= 0 &&
-    captureRow < 8
-  ) {
-    const captureColumns = [
-      position.column - 1,
-      position.column + 1,
-    ];
+  const captureColumns = [
+    position.column - 1,
+    position.column + 1,
+  ];
 
-    for (const column of captureColumns) {
-      if (
-        column < 0 ||
-        column >= 8
-      ) {
-        continue;
-      }
+  for (const column of captureColumns) {
+    if (
+      !isInsideBoard(
+        captureRow,
+        column,
+      )
+    ) {
+      continue;
+    }
 
-      const targetPiece =
-        board[captureRow][column];
+    const target =
+      board[captureRow][column];
 
-      if (
-        targetPiece &&
-        targetPiece.color !== piece.color
-      ) {
-        moves.push({
-          row: captureRow,
-          column,
-        });
-      }
+    if (
+      target &&
+      target.color !== piece.color
+    ) {
+      moves.push({
+        row: captureRow,
+        column,
+      });
     }
   }
 
   return moves;
+}
+
+function getRookMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+): Position[] {
+  return getSlidingMoves(
+    board,
+    position,
+    piece,
+    [
+      { row: -1, column: 0 },
+      { row: 1, column: 0 },
+      { row: 0, column: -1 },
+      { row: 0, column: 1 },
+    ],
+  );
+}
+
+function getBishopMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+): Position[] {
+  return getSlidingMoves(
+    board,
+    position,
+    piece,
+    [
+      { row: -1, column: -1 },
+      { row: -1, column: 1 },
+      { row: 1, column: -1 },
+      { row: 1, column: 1 },
+    ],
+  );
+}
+
+function getQueenMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+): Position[] {
+  return getSlidingMoves(
+    board,
+    position,
+    piece,
+    [
+      { row: -1, column: 0 },
+      { row: 1, column: 0 },
+      { row: 0, column: -1 },
+      { row: 0, column: 1 },
+      { row: -1, column: -1 },
+      { row: -1, column: 1 },
+      { row: 1, column: -1 },
+      { row: 1, column: 1 },
+    ],
+  );
+}
+
+function getKnightMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+): Position[] {
+  const moves: Position[] = [];
+
+  const offsets = [
+    { row: -2, column: -1 },
+    { row: -2, column: 1 },
+    { row: -1, column: -2 },
+    { row: -1, column: 2 },
+    { row: 1, column: -2 },
+    { row: 1, column: 2 },
+    { row: 2, column: -1 },
+    { row: 2, column: 1 },
+  ];
+
+  for (const offset of offsets) {
+    const row =
+      position.row + offset.row;
+
+    const column =
+      position.column + offset.column;
+
+    if (
+      !isInsideBoard(row, column)
+    ) {
+      continue;
+    }
+
+    const target = board[row][column];
+
+    if (
+      !target ||
+      target.color !== piece.color
+    ) {
+      moves.push({ row, column });
+    }
+  }
+
+  return moves;
+}
+
+function getKingMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+): Position[] {
+  const moves: Position[] = [];
+
+  const directions = [
+    { row: -1, column: -1 },
+    { row: -1, column: 0 },
+    { row: -1, column: 1 },
+    { row: 0, column: -1 },
+    { row: 0, column: 1 },
+    { row: 1, column: -1 },
+    { row: 1, column: 0 },
+    { row: 1, column: 1 },
+  ];
+
+  for (const direction of directions) {
+    const row =
+      position.row + direction.row;
+
+    const column =
+      position.column + direction.column;
+
+    if (
+      !isInsideBoard(row, column)
+    ) {
+      continue;
+    }
+
+    const target = board[row][column];
+
+    if (
+      !target ||
+      target.color !== piece.color
+    ) {
+      moves.push({ row, column });
+    }
+  }
+
+  return moves;
+}
+
+export function getValidMoves(
+  board: Board,
+  position: Position,
+  piece: Piece,
+): Position[] {
+  switch (piece.type) {
+    case "pawn":
+      return getPawnMoves(
+        board,
+        position,
+        piece,
+      );
+
+    case "rook":
+      return getRookMoves(
+        board,
+        position,
+        piece,
+      );
+
+    case "bishop":
+      return getBishopMoves(
+        board,
+        position,
+        piece,
+      );
+
+    case "knight":
+      return getKnightMoves(
+        board,
+        position,
+        piece,
+      );
+
+    case "queen":
+      return getQueenMoves(
+        board,
+        position,
+        piece,
+      );
+
+    case "king":
+      return getKingMoves(
+        board,
+        position,
+        piece,
+      );
+
+    default:
+      return [];
+  }
 }
 
 export function movePiece(
@@ -87,12 +331,15 @@ export function movePiece(
   from: Position,
   to: Position,
 ): Board {
-  const newBoard = board.map((row) => [...row]);
+  const newBoard = board.map(
+    (row) => [...row],
+  );
 
   newBoard[to.row][to.column] =
     newBoard[from.row][from.column];
 
-  newBoard[from.row][from.column] = null;
+  newBoard[from.row][from.column] =
+    null;
 
   return newBoard;
 }
