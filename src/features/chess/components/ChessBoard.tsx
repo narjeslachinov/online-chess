@@ -7,12 +7,13 @@ import {
   getValidMoves,
   isCheckmate,
   isInCheck,
-  movePiece,
+  moveWithCastling,
 } from "../utils/move.utils";
 import { squareToPosition } from "../utils/board.utils";
 
 import type {
   Board,
+  CastlingRights,
   Piece,
   PieceType,
   PlayerColor,
@@ -84,6 +85,14 @@ export default function ChessBoard() {
       color: PlayerColor;
     } | null>(null);
 
+  const [castlingRights, setCastlingRights] =
+    useState<CastlingRights>({
+      whiteKing: true,
+      whiteQueen: true,
+      blackKing: true,
+      blackQueen: true,
+    });
+
   const resetGame = () => {
     setBoard(initialBoard);
     setSelectedSquare(null);
@@ -92,11 +101,19 @@ export default function ChessBoard() {
     setGameOver(false);
     setWinner(null);
     setPromotion(null);
+
+    setCastlingRights({
+      whiteKing: true,
+      whiteQueen: true,
+      blackKing: true,
+      blackQueen: true,
+    });
   };
 
   const finishTurn = (
     nextBoard: Board,
     movingColor: PlayerColor,
+    nextCastlingRights: CastlingRights,
   ) => {
     const nextTurn =
       movingColor === "white"
@@ -107,6 +124,7 @@ export default function ChessBoard() {
       isCheckmate(
         nextBoard,
         nextTurn,
+        nextCastlingRights,
       )
     ) {
       setGameOver(true);
@@ -117,6 +135,7 @@ export default function ChessBoard() {
     setCurrentTurn(nextTurn);
     setSelectedSquare(null);
     setPossibleMoves([]);
+    setCastlingRights(nextCastlingRights);
   };
 
   const handlePromotion = (
@@ -142,6 +161,7 @@ export default function ChessBoard() {
     finishTurn(
       newBoard,
       promotion.color,
+      castlingRights,
     );
   };
 
@@ -170,11 +190,76 @@ export default function ChessBoard() {
         return;
       }
 
-      const newBoard = movePiece(
-        board,
-        from,
-        to,
-      );
+      const newBoard =
+        moveWithCastling(
+          board,
+          from,
+          to,
+        );
+
+      const nextCastlingRights = {
+        ...castlingRights,
+      };
+
+      if (
+        movingPiece.type === "king"
+      ) {
+        if (
+          movingPiece.color === "white"
+        ) {
+          nextCastlingRights.whiteKing =
+            false;
+
+          nextCastlingRights.whiteQueen =
+            false;
+        } else {
+          nextCastlingRights.blackKing =
+            false;
+
+          nextCastlingRights.blackQueen =
+            false;
+        }
+      }
+
+      if (
+        movingPiece.type === "rook"
+      ) {
+        if (
+          movingPiece.color === "white" &&
+          from.row === 7 &&
+          from.column === 0
+        ) {
+          nextCastlingRights.whiteQueen =
+            false;
+        }
+
+        if (
+          movingPiece.color === "white" &&
+          from.row === 7 &&
+          from.column === 7
+        ) {
+          nextCastlingRights.whiteKing =
+            false;
+        }
+
+        if (
+          movingPiece.color === "black" &&
+          from.row === 0 &&
+          from.column === 0
+        ) {
+          nextCastlingRights.blackQueen =
+            false;
+        }
+
+        if (
+          movingPiece.color === "black" &&
+          from.row === 0 &&
+          from.column === 7
+        ) {
+          nextCastlingRights.blackKing =
+            false;
+        }
+      }
 
       const isPromotion =
         movingPiece.type === "pawn" &&
@@ -186,6 +271,10 @@ export default function ChessBoard() {
 
         setSelectedSquare(null);
         setPossibleMoves([]);
+
+        setCastlingRights(
+          nextCastlingRights,
+        );
 
         setPromotion({
           row: to.row,
@@ -199,6 +288,7 @@ export default function ChessBoard() {
       finishTurn(
         newBoard,
         movingPiece.color,
+        nextCastlingRights,
       );
 
       return;
@@ -223,6 +313,7 @@ export default function ChessBoard() {
       board,
       position,
       piece,
+      castlingRights,
     );
 
     const moveSquares = moves.map(
@@ -363,7 +454,7 @@ export default function ChessBoard() {
                       }
                     </span>
 
-                    <span className="mt-1 text-xs text-zinc-600">
+                    <span className="mt-1 text-xs capitalize text-zinc-600">
                       {pieceType}
                     </span>
                   </button>

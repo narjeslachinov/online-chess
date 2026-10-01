@@ -23,3 +23,10 @@ export type Position = {
 };
 
 export type PlayerColor = "white" | "black";
+
+export type CastlingRights = {
+  whiteKing: boolean;
+  whiteQueen: boolean;
+  blackKing: boolean;
+  blackQueen: boolean;
+};
