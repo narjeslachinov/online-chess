@@ -16,3 +16,8 @@ export type Piece = {
 export type Square = Piece | null;
 
 export type Board = Square[][];
+
+export type Position = {
+  row: number;
+  column: number;
+};
