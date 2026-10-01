@@ -96,6 +96,9 @@ export default function ChessBoard() {
       blackQueen: true,
     });
 
+    const [enPassantTarget, setEnPassantTarget] =
+  useState<string | null>(null);
+
   const resetGame = () => {
     setBoard(initialBoard);
     setSelectedSquare(null);
@@ -208,6 +211,19 @@ const finishTurn = (
           from,
           to,
         );
+         if (
+        movingPiece.type === "pawn" &&
+        Math.abs(to.row - from.row) === 2
+        ) {
+        const middleRow =
+            (from.row + to.row) / 2;
+
+        setEnPassantTarget(
+            `${files[from.column]}${8 - middleRow}`,
+        );
+        } else {
+        setEnPassantTarget(null);
+        }
 
       const nextCastlingRights = {
         ...castlingRights,

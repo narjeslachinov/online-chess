@@ -61,6 +61,7 @@ function getPawnMoves(
   board: Board,
   position: Position,
   piece: Piece,
+  enPassantTarget?: Position | null,
 ): Position[] {
   const moves: Position[] = [];
 
@@ -77,6 +78,7 @@ function getPawnMoves(
   const oneStepRow =
     position.row + direction;
 
+  // حرکت یک خانه‌ای
   if (
     isInsideBoard(
       oneStepRow,
@@ -90,6 +92,7 @@ function getPawnMoves(
       column: position.column,
     });
 
+    // حرکت دو خانه‌ای از خانه شروع
     const twoStepRow =
       position.row + direction * 2;
 
@@ -105,6 +108,7 @@ function getPawnMoves(
     }
   }
 
+  // حرکت‌های ضربه‌ای معمولی + En Passant
   const captureRow =
     position.row + direction;
 
@@ -124,9 +128,23 @@ function getPawnMoves(
     const target =
       board[captureRow][column];
 
+    // Capture معمولی
     if (
       target &&
       target.color !== piece.color
+    ) {
+      moves.push({
+        row: captureRow,
+        column,
+      });
+    }
+
+    // En Passant
+    if (
+      enPassantTarget &&
+      enPassantTarget.row === captureRow &&
+      enPassantTarget.column === column &&
+      !target
     ) {
       moves.push({
         row: captureRow,
@@ -290,6 +308,7 @@ function getPseudoLegalMoves(
   board: Board,
   position: Position,
   piece: Piece,
+  enPassantTarget?: Position | null,
 ): Position[] {
   switch (piece.type) {
     case "pawn":
@@ -297,6 +316,7 @@ function getPseudoLegalMoves(
         board,
         position,
         piece,
+        enPassantTarget,
       );
 
     case "rook":
@@ -393,11 +413,14 @@ export function isSquareAttacked(
         continue;
       }
 
+      // برای بررسی Attack نباید En Passant
+      // باعث شود خانه‌ای به اشتباه Attacked حساب شود.
       const moves =
         getPseudoLegalMoves(
           board,
           { row, column },
           piece,
+          null,
         );
 
       if (
@@ -578,21 +601,25 @@ export function getValidMoves(
   position: Position,
   piece: Piece,
   castlingRights?: CastlingRights,
+  enPassantTarget?: Position | null,
 ): Position[] {
   const pseudoMoves =
     getPseudoLegalMoves(
       board,
       position,
       piece,
+      enPassantTarget,
     );
 
   const validMoves =
     pseudoMoves.filter((move) => {
-      const nextBoard = movePiece(
-        board,
-        position,
-        move,
-      );
+      const nextBoard =
+        moveWithSpecialRules(
+          board,
+          position,
+          move,
+          enPassantTarget,
+        );
 
       return !isInCheck(
         nextBoard,
@@ -636,6 +663,99 @@ export function getValidMoves(
   return validMoves;
 }
 
+function moveWithSpecialRules(
+  board: Board,
+  from: Position,
+  to: Position,
+  enPassantTarget?: Position | null,
+): Board {
+  if (
+    isEnPassantMove(
+      board,
+      from,
+      to,
+      enPassantTarget,
+    )
+  ) {
+    return moveWithEnPassant(
+      board,
+      from,
+      to,
+    );
+  }
+
+  if (
+    isCastlingMove(
+      board,
+      from,
+      to,
+    )
+  ) {
+    return moveWithCastling(
+      board,
+      from,
+      to,
+    );
+  }
+
+  return movePiece(
+    board,
+    from,
+    to,
+  );
+}
+
+function isCastlingMove(
+  board: Board,
+  from: Position,
+  to: Position,
+): boolean {
+  const piece =
+    board[from.row][from.column];
+
+  return (
+    piece?.type === "king" &&
+    Math.abs(
+      to.column - from.column,
+    ) === 2
+  );
+}
+
+function isEnPassantMove(
+  board: Board,
+  from: Position,
+  to: Position,
+  enPassantTarget?: Position | null,
+): boolean {
+  const piece =
+    board[from.row][from.column];
+
+  if (piece?.type !== "pawn") {
+    return false;
+  }
+
+  if (!enPassantTarget) {
+    return false;
+  }
+
+  if (
+    to.row !== enPassantTarget.row ||
+    to.column !== enPassantTarget.column
+  ) {
+    return false;
+  }
+
+  if (from.column === to.column) {
+    return false;
+  }
+
+  if (board[to.row][to.column] !== null) {
+    return false;
+  }
+
+  return true;
+}
+
 export function moveWithCastling(
   board: Board,
   from: Position,
@@ -677,10 +797,45 @@ export function moveWithCastling(
   return newBoard;
 }
 
+export function moveWithEnPassant(
+  board: Board,
+  from: Position,
+  to: Position,
+): Board {
+  const newBoard = movePiece(
+    board,
+    from,
+    to,
+  );
+
+  const piece =
+    board[from.row][from.column];
+
+  if (piece?.type !== "pawn") {
+    return newBoard;
+  }
+
+  if (
+    from.column === to.column ||
+    board[to.row][to.column] !== null
+  ) {
+    return newBoard;
+  }
+
+  const capturedPawnRow =
+    from.row;
+
+  newBoard[capturedPawnRow][to.column] =
+    null;
+
+  return newBoard;
+}
+
 export function hasAnyValidMove(
   board: Board,
   color: Piece["color"],
   castlingRights?: CastlingRights,
+  enPassantTarget?: Position | null,
 ): boolean {
   for (let row = 0; row < 8; row++) {
     for (let column = 0; column < 8; column++) {
@@ -698,6 +853,7 @@ export function hasAnyValidMove(
         { row, column },
         piece,
         castlingRights,
+        enPassantTarget,
       );
 
       if (moves.length > 0) {
@@ -713,6 +869,7 @@ export function isCheckmate(
   board: Board,
   color: Piece["color"],
   castlingRights?: CastlingRights,
+  enPassantTarget?: Position | null,
 ): boolean {
   return (
     isInCheck(board, color) &&
@@ -720,13 +877,16 @@ export function isCheckmate(
       board,
       color,
       castlingRights,
+      enPassantTarget,
     )
   );
 }
+
 export function isStalemate(
   board: Board,
   color: Piece["color"],
   castlingRights?: CastlingRights,
+  enPassantTarget?: Position | null,
 ): boolean {
   return (
     !isInCheck(board, color) &&
@@ -734,6 +894,7 @@ export function isStalemate(
       board,
       color,
       castlingRights,
+      enPassantTarget,
     )
   );
 }
