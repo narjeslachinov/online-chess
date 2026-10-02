@@ -3,46 +3,82 @@
 import { useEffect, useState } from "react";
 
 import { socket } from "../socket/socket-client";
+import { getPlayerId } from "../utils/player.utils";
 
 export default function SocketTest() {
   const [connected, setConnected] =
     useState(false);
 
-  useEffect(() => {
-    const handleConnect = () => {
-      setConnected(true);
-    };
+    useEffect(() => {
+      const handleConnect = () => {
+        setConnected(true);
 
-    const handleDisconnect = () => {
-      setConnected(false);
-    };
+        const playerId = getPlayerId();
 
-    socket.on(
-      "connect",
-      handleConnect,
-    );
+        socket.emit(
+          "join-game",
+          playerId,
+        );
+      };
 
-    socket.on(
-      "disconnect",
-      handleDisconnect,
-    );
+      const handleDisconnect = () => {
+        setConnected(false);
+      };
 
-    socket.connect();
-
-    return () => {
-      socket.off(
+      socket.on(
         "connect",
         handleConnect,
       );
 
-      socket.off(
+      socket.on(
         "disconnect",
         handleDisconnect,
       );
 
-      socket.disconnect();
-    };
-  }, []);
+      socket.on(
+        "game-status",
+        (data) => {
+          console.log(
+            "Game status:",
+            data,
+          );
+        },
+      );
+
+      socket.on(
+        "game-start",
+        (data) => {
+          console.log(
+            "Game started:",
+            data,
+          );
+        },
+      );
+
+      socket.connect();
+
+      return () => {
+        socket.off(
+          "connect",
+          handleConnect,
+        );
+
+        socket.off(
+          "disconnect",
+          handleDisconnect,
+        );
+
+        socket.off(
+          "game-status",
+        );
+
+        socket.off(
+          "game-start",
+        );
+
+        socket.disconnect();
+      };
+    }, []);
 
   return (
     <div className="text-white">
