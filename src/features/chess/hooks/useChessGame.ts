@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import { socket } from "../socket/socket-client";
 
 import { initialBoard } from "../data/initial-board";
 
@@ -41,12 +46,21 @@ type PromotionState = {
   color: PlayerColor;
 } | null;
 
+type OpponentMove = {
+  from: string;
+  to: string;
+  playerColor: PlayerColor;
+};
+
 export function useChessGame() {
   const [board, setBoard] =
     useState<Board>(initialBoard);
 
   const [currentTurn, setCurrentTurn] =
     useState<PlayerColor>("white");
+
+  const [playerColor, setPlayerColor] =
+    useState<PlayerColor | null>(null);
 
   const [selectedSquare, setSelectedSquare] =
     useState<string | null>(null);
@@ -88,15 +102,356 @@ export function useChessGame() {
       );
     };
 
+  /*
+   * =========================
+   * SOCKET: GAME STATUS
+   * =========================
+   */
+
+  useEffect(() => {
+    const handleGameStatus = (data: {
+      status: string;
+      color?: PlayerColor;
+      currentTurn?: PlayerColor;
+    }) => {
+      if (
+        data.color === "white" ||
+        data.color === "black"
+      ) {
+        setPlayerColor(data.color);
+      }
+
+      if (
+        data.currentTurn === "white" ||
+        data.currentTurn === "black"
+      ) {
+        setCurrentTurn(
+          data.currentTurn,
+        );
+      }
+    };
+
+    socket.on(
+      "game-status",
+      handleGameStatus,
+    );
+
+    return () => {
+      socket.off(
+        "game-status",
+        handleGameStatus,
+      );
+    };
+  }, []);
+
+  /*
+   * =========================
+   * SOCKET: GAME START
+   * =========================
+   */
+
+  useEffect(() => {
+    const handleGameStart = (data: {
+      currentTurn?: PlayerColor;
+    }) => {
+      if (
+        data.currentTurn === "white" ||
+        data.currentTurn === "black"
+      ) {
+        setCurrentTurn(
+          data.currentTurn,
+        );
+      }
+
+      setGameOver(false);
+      setWinner(null);
+      setDraw(false);
+    };
+
+    socket.on(
+      "game-start",
+      handleGameStart,
+    );
+
+    return () => {
+      socket.off(
+        "game-start",
+        handleGameStart,
+      );
+    };
+  }, []);
+
+  /*
+   * =========================
+   * SOCKET: OPPONENT MOVE
+   * =========================
+   */
+
+  useEffect(() => {
+    const handleOpponentMove = (
+      move: OpponentMove,
+    ) => {
+      /*
+       * Server currently sends the move
+       * to everyone in the room.
+       *
+       * Therefore the player who made
+       * the move must ignore it.
+       */
+      if (
+        !playerColor ||
+        move.playerColor === playerColor
+      ) {
+        return;
+      }
+
+      const from =
+        squareToPosition(move.from);
+
+      const to =
+        squareToPosition(move.to);
+
+      setBoard((currentBoard) => {
+        const movingPiece =
+          currentBoard[from.row][from.column];
+
+        if (!movingPiece) {
+          console.warn(
+            "Opponent move ignored: piece not found.",
+          );
+
+          return currentBoard;
+        }
+
+        const currentEnPassantPosition =
+          getEnPassantPosition();
+
+        const isEnPassant =
+          movingPiece.type === "pawn" &&
+          currentEnPassantPosition !== null &&
+          to.row ===
+            currentEnPassantPosition.row &&
+          to.column ===
+            currentEnPassantPosition.column &&
+          from.column !== to.column &&
+          currentBoard[to.row][to.column] ===
+            null;
+
+        let nextBoard: Board;
+
+        if (isEnPassant) {
+          nextBoard =
+            moveWithEnPassant(
+              currentBoard,
+              from,
+              to,
+            );
+        } else {
+          nextBoard =
+            moveWithCastling(
+              currentBoard,
+              from,
+              to,
+            );
+        }
+
+        return nextBoard;
+      });
+
+      /*
+       * Update castling rights
+       * after opponent's move.
+       */
+      setCastlingRights(
+        (currentRights) => {
+          const nextRights = {
+            ...currentRights,
+          };
+
+          if (
+            move.playerColor === "white"
+          ) {
+            const movingPiece =
+              board[from.row][from.column];
+
+            if (
+              movingPiece?.type === "king"
+            ) {
+              nextRights.whiteKing =
+                false;
+
+              nextRights.whiteQueen =
+                false;
+            }
+
+            if (
+              movingPiece?.type === "rook"
+            ) {
+              if (
+                from.row === 7 &&
+                from.column === 0
+              ) {
+                nextRights.whiteQueen =
+                  false;
+              }
+
+              if (
+                from.row === 7 &&
+                from.column === 7
+              ) {
+                nextRights.whiteKing =
+                  false;
+              }
+            }
+          }
+
+          if (
+            move.playerColor === "black"
+          ) {
+            const movingPiece =
+              board[from.row][from.column];
+
+            if (
+              movingPiece?.type === "king"
+            ) {
+              nextRights.blackKing =
+                false;
+
+              nextRights.blackQueen =
+                false;
+            }
+
+            if (
+              movingPiece?.type === "rook"
+            ) {
+              if (
+                from.row === 0 &&
+                from.column === 0
+              ) {
+                nextRights.blackQueen =
+                  false;
+              }
+
+              if (
+                from.row === 0 &&
+                from.column === 7
+              ) {
+                nextRights.blackKing =
+                  false;
+              }
+            }
+          }
+
+          return nextRights;
+        },
+      );
+
+      /*
+       * If opponent moved a pawn two squares,
+       * create the en-passant target.
+       */
+      const opponentPiece =
+        board[from.row][from.column];
+
+      if (
+        opponentPiece?.type === "pawn" &&
+        Math.abs(
+          to.row - from.row,
+        ) === 2
+      ) {
+        const middleRow =
+          (from.row + to.row) / 2;
+
+        setEnPassantTarget(
+          `${files[from.column]}${
+            8 - middleRow
+          }`,
+        );
+      } else {
+        setEnPassantTarget(null);
+      }
+
+      setCurrentTurn(
+        move.playerColor === "white"
+          ? "black"
+          : "white",
+      );
+
+      setSelectedSquare(null);
+      setPossibleMoves([]);
+    };
+
+    socket.on(
+      "opponent-move",
+      handleOpponentMove,
+    );
+
+    return () => {
+      socket.off(
+        "opponent-move",
+        handleOpponentMove,
+      );
+    };
+  }, [
+    playerColor,
+    board,
+    enPassantTarget,
+  ]);
+
+  /*
+   * =========================
+   * SOCKET: INVALID MOVE
+   * =========================
+   */
+
+  useEffect(() => {
+    const handleInvalidMove = (
+      data: {
+        reason: string;
+      },
+    ) => {
+      console.log(
+        "Invalid move:",
+        data.reason,
+      );
+    };
+
+    socket.on(
+      "invalid-move",
+      handleInvalidMove,
+    );
+
+    return () => {
+      socket.off(
+        "invalid-move",
+        handleInvalidMove,
+      );
+    };
+  }, []);
+
+  /*
+   * =========================
+   * RESET GAME
+   * =========================
+   */
+
   const resetGame = () => {
     setBoard(initialBoard);
+
     setCurrentTurn("white");
+
     setSelectedSquare(null);
+
     setPossibleMoves([]);
+
     setGameOver(false);
+
     setWinner(null);
+
     setDraw(false);
+
     setPromotion(null);
+
     setEnPassantTarget(null);
 
     setCastlingRights({
@@ -106,6 +461,12 @@ export function useChessGame() {
       blackQueen: true,
     });
   };
+
+  /*
+   * =========================
+   * FINISH TURN
+   * =========================
+   */
 
   const finishTurn = (
     nextBoard: Board,
@@ -148,16 +509,27 @@ export function useChessGame() {
     }
 
     setBoard(nextBoard);
+
     setCurrentTurn(nextTurn);
+
     setSelectedSquare(null);
+
     setPossibleMoves([]);
+
     setCastlingRights(
       nextCastlingRights,
     );
+
     setEnPassantTarget(
       nextEnPassantTarget,
     );
   };
+
+  /*
+   * =========================
+   * PROMOTION
+   * =========================
+   */
 
   const handlePromotion = (
     pieceType: PieceType,
@@ -187,6 +559,12 @@ export function useChessGame() {
     );
   };
 
+  /*
+   * =========================
+   * SELECT SQUARE
+   * =========================
+   */
+
   const selectSquare = (
     square: string,
   ) => {
@@ -197,11 +575,23 @@ export function useChessGame() {
       return;
     }
 
+    /*
+     * Player can only move
+     * when it is their turn.
+     */
+    if (
+      playerColor &&
+      playerColor !== currentTurn
+    ) {
+      return;
+    }
+
+    const position =
+      squareToPosition(square);
+
     const piece =
-      board[
-        squareToPosition(square).row
-      ][
-        squareToPosition(square).column
+      board[position.row][
+        position.column
       ];
 
     if (!piece) {
@@ -216,10 +606,14 @@ export function useChessGame() {
       return;
     }
 
-    setSelectedSquare(square);
+    if (
+      playerColor &&
+      piece.color !== playerColor
+    ) {
+      return;
+    }
 
-    const position =
-      squareToPosition(square);
+    setSelectedSquare(square);
 
     const moves = getValidMoves(
       board,
@@ -234,23 +628,47 @@ export function useChessGame() {
         `${files[column]}${8 - row}`,
     );
 
-    setPossibleMoves(moveSquares);
+    setPossibleMoves(
+      moveSquares,
+    );
   };
+
+  /*
+   * =========================
+   * MOVE SELECTED PIECE
+   * =========================
+   */
 
   const moveSelectedPiece = (
     square: string,
   ) => {
     if (
       !selectedSquare ||
-      !possibleMoves.includes(square) ||
+      !possibleMoves.includes(
+        square,
+      ) ||
       gameOver ||
       promotion
     ) {
       return false;
     }
 
+    /*
+     * Extra client-side turn check.
+     *
+     * Server also checks this.
+     */
+    if (
+      playerColor &&
+      playerColor !== currentTurn
+    ) {
+      return false;
+    }
+
     const from =
-      squareToPosition(selectedSquare);
+      squareToPosition(
+        selectedSquare,
+      );
 
     const to =
       squareToPosition(square);
@@ -261,6 +679,12 @@ export function useChessGame() {
     if (!movingPiece) {
       return false;
     }
+
+    /*
+     * =========================
+     * EN PASSANT
+     * =========================
+     */
 
     const currentEnPassantPosition =
       getEnPassantPosition();
@@ -273,7 +697,8 @@ export function useChessGame() {
       to.column ===
         currentEnPassantPosition.column &&
       from.column !== to.column &&
-      board[to.row][to.column] === null;
+      board[to.row][to.column] ===
+        null;
 
     let newBoard: Board;
 
@@ -293,6 +718,12 @@ export function useChessGame() {
         );
     }
 
+    /*
+     * =========================
+     * EN PASSANT TARGET
+     * =========================
+     */
+
     let nextEnPassantTarget:
       | string
       | null = null;
@@ -311,6 +742,12 @@ export function useChessGame() {
           8 - middleRow
         }`;
     }
+
+    /*
+     * =========================
+     * CASTLING RIGHTS
+     * =========================
+     */
 
     const nextCastlingRights = {
       ...castlingRights,
@@ -376,6 +813,12 @@ export function useChessGame() {
       }
     }
 
+    /*
+     * =========================
+     * PROMOTION
+     * =========================
+     */
+
     const isPromotion =
       movingPiece.type === "pawn" &&
       (to.row === 0 ||
@@ -383,11 +826,15 @@ export function useChessGame() {
 
     if (isPromotion) {
       setBoard(newBoard);
+
       setSelectedSquare(null);
+
       setPossibleMoves([]);
+
       setCastlingRights(
         nextCastlingRights,
       );
+
       setEnPassantTarget(null);
 
       setPromotion({
@@ -396,8 +843,34 @@ export function useChessGame() {
         color: movingPiece.color,
       });
 
+      /*
+       * We don't send the move yet.
+       *
+       * Promotion needs the selected
+       * piece type as well.
+       */
       return true;
     }
+
+    /*
+     * =========================
+     * SEND MOVE TO SERVER
+     * =========================
+     */
+
+    socket.emit(
+      "make-move",
+      {
+        from: selectedSquare,
+        to: square,
+      },
+    );
+
+    /*
+     * =========================
+     * UPDATE LOCAL BOARD
+     * =========================
+     */
 
     finishTurn(
       newBoard,
@@ -409,12 +882,20 @@ export function useChessGame() {
     return true;
   };
 
+  /*
+   * =========================
+   * SQUARE CLICK
+   * =========================
+   */
+
   const handleSquareClick = (
     square: string,
   ) => {
     if (
       selectedSquare &&
-      possibleMoves.includes(square)
+      possibleMoves.includes(
+        square,
+      )
     ) {
       moveSelectedPiece(square);
       return;
@@ -422,6 +903,12 @@ export function useChessGame() {
 
     selectSquare(square);
   };
+
+  /*
+   * =========================
+   * CHECK
+   * =========================
+   */
 
   const isCurrentPlayerInCheck =
     isInCheck(
@@ -431,19 +918,33 @@ export function useChessGame() {
 
   return {
     board,
+
     currentTurn,
+
+    playerColor,
+
     selectedSquare,
+
     possibleMoves,
+
     gameOver,
+
     winner,
+
     draw,
+
     promotion,
+
     castlingRights,
+
     enPassantTarget,
+
     isCurrentPlayerInCheck,
 
     handleSquareClick,
+
     handlePromotion,
+
     resetGame,
   };
 }

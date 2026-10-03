@@ -22,6 +22,7 @@ export class RoomManager {
         id: this.defaultRoomId,
         whitePlayer: null,
         blackPlayer: null,
+        currentTurn: "white",
       };
 
       this.rooms.set(

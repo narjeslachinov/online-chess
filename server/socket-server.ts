@@ -29,6 +29,10 @@ io.on(
       `Socket connected: ${socket.id}`,
     );
 
+    // =========================
+    // JOIN GAME
+    // =========================
+
     socket.on(
       "join-game",
       (
@@ -42,6 +46,7 @@ io.on(
         socket.data.playerId =
           playerId;
 
+        // Player must wait
         if (
           result.color ===
           "waiting"
@@ -63,6 +68,7 @@ io.on(
           return;
         }
 
+        // Join room
         socket.join(
           result.room!.id,
         );
@@ -70,22 +76,30 @@ io.on(
         socket.data.color =
           result.color;
 
+        const isGameReady =
+          Boolean(
+            result.room!
+              .whitePlayer &&
+            result.room!
+              .blackPlayer,
+          );
+
         socket.emit(
           "game-status",
           {
-            status:
-              result.room!
-                .whitePlayer &&
-              result.room!
-                .blackPlayer
-                ? "playing"
-                : "waiting-for-opponent",
+            status: isGameReady
+              ? "playing"
+              : "waiting-for-opponent",
 
             color:
               result.color,
 
             roomId:
               result.room!.id,
+
+            currentTurn:
+              result.room!
+                .currentTurn,
           },
         );
 
@@ -93,12 +107,8 @@ io.on(
           `Player ${playerId} joined as ${result.color}`,
         );
 
-        if (
-          result.room!
-            .whitePlayer &&
-          result.room!
-            .blackPlayer
-        ) {
+        // Start game when both players exist
+        if (isGameReady) {
           io.to(
             result.room!.id,
           ).emit(
@@ -109,11 +119,15 @@ io.on(
 
               whitePlayer:
                 result.room!
-                  .whitePlayer.id,
+                  .whitePlayer!.id,
 
               blackPlayer:
                 result.room!
-                  .blackPlayer.id,
+                  .blackPlayer!.id,
+
+              currentTurn:
+                result.room!
+                  .currentTurn,
             },
           );
 
@@ -123,6 +137,100 @@ io.on(
         }
       },
     );
+
+    // =========================
+    // MAKE MOVE
+    // =========================
+
+    socket.on(
+      "make-move",
+      (
+        move: {
+          from: string;
+          to: string;
+        },
+      ) => {
+        const playerId =
+          socket.data.playerId;
+
+        const color =
+          socket.data.color;
+
+        if (
+          !playerId ||
+          (color !== "white" &&
+            color !== "black")
+        ) {
+          return;
+        }
+
+        const room =
+          roomManager.getRoom();
+
+        if (
+          !room.whitePlayer ||
+          !room.blackPlayer
+        ) {
+          return;
+        }
+
+        // Check that player belongs to this room
+        const playerIsInRoom =
+          room.whitePlayer.id ===
+            playerId ||
+          room.blackPlayer.id ===
+            playerId;
+
+        if (!playerIsInRoom) {
+          return;
+        }
+
+        // Check player's turn
+        if (
+          color !==
+          room.currentTurn
+        ) {
+          socket.emit(
+            "invalid-move",
+            {
+              reason:
+                "NOT_YOUR_TURN",
+            },
+          );
+
+          return;
+        }
+
+        const chessMove = {
+          from: move.from,
+          to: move.to,
+          playerColor: color,
+        };
+
+        // Send move to everyone in the room
+        io.to(
+          room.id,
+        ).emit(
+          "opponent-move",
+          chessMove,
+        );
+
+        // Change turn
+        room.currentTurn =
+          room.currentTurn ===
+          "white"
+            ? "black"
+            : "white";
+
+        console.log(
+          `Move ${move.from} -> ${move.to} by ${color}`,
+        );
+      },
+    );
+
+    // =========================
+    // DISCONNECT
+    // =========================
 
     socket.on(
       "disconnect",
@@ -158,6 +266,7 @@ io.on(
           return;
         }
 
+        // Promote waiting player
         const promoted =
           roomManager.promoteWaitingPlayer();
 
@@ -193,17 +302,27 @@ io.on(
 
                 roomId:
                   result.room.id,
+
+                currentTurn:
+                  result.room
+                    .currentTurn,
               },
+            );
+
+            console.log(
+              `Waiting player ${promoted.player.id} promoted to ${promoted.color}.`,
             );
           }
         }
 
+        // Notify remaining players
         io.to(
           result.room.id,
         ).emit(
           "player-left",
           {
             playerId,
+
             color:
               result.removedColor,
           },
